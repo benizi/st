@@ -341,6 +341,8 @@ static void xsetsel(char*);
 static void xtermclear(int, int, int, int);
 static void xresize(int, int);
 
+static XftColor rgb2xft(int, int, int);
+
 static void expose(XEvent *);
 static void visibility(XEvent *);
 static void unmap(XEvent *);
@@ -1389,7 +1391,20 @@ tsetattr(int *attr, int l) {
 			{
 				int is_fg = attr[i] == 38;
 				char *fg_bg = is_fg ? "fg" : "bg";
-				if(i + 2 < l && attr[i + 1] == 5) {
+				if(i + 2 < l && attr[i + 1] == 2) {
+					if(BETWEEN(attr[i+2], 0, 255)
+							&& BETWEEN(attr[i+3], 0, 255)
+							&& BETWEEN(attr[i+4], 0, 255)) {
+						XftColor xftc = rgb2xft(attr[i+2], attr[i+3], attr[i+4]);
+						if(is_fg)
+							term.c.attr.fg = xftc;
+						else
+							term.c.attr.bg = xftc;
+						i += 4;
+					}
+					else
+						fprintf(stderr, "erresc: bad 24-bit %scolor (%d, %d, %d)\n", fg_bg, attr[i+2], attr[i+3], attr[i+4]);
+				} else if(i + 2 < l && attr[i + 1] == 5) {
 					i += 2;
 					if(BETWEEN(attr[i], 0, 255)) {
 						if(is_fg)
@@ -2178,6 +2193,19 @@ xresize(int col, int row) {
 	xw.th = MAX(1, row * xw.ch);
 
 	XftDrawChange(xw.draw, xw.buf);
+}
+
+XftColor
+rgb2xft(int r, int g, int b) {
+	XftColor xft_color;
+	XRenderColor xrc_color = { .alpha = 0 };
+	xrc_color.red = r + (r << 8);
+	xrc_color.green = g + (g << 8);
+	xrc_color.blue = b + (b << 8);
+	if(!XftColorAllocValue(xw.dpy, xw.vis, xw.cmap, &xrc_color, &xft_color)) {
+		die("Could not allocate color rgb=(%d, %d, %d)\n", r, g, b);
+	}
+	return xft_color;
 }
 
 void
