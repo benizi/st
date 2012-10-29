@@ -2239,7 +2239,7 @@ netwmpid(void) {
 XftColor
 rgb2xft(int r, int g, int b) {
 	XftColor xft_color;
-	XRenderColor xrc_color = { .alpha = 0 };
+	XRenderColor xrc_color = { .alpha = 0xffff };
 	xrc_color.red = r + (r << 8);
 	xrc_color.green = g + (g << 8);
 	xrc_color.blue = b + (b << 8);
@@ -2252,7 +2252,7 @@ rgb2xft(int r, int g, int b) {
 void
 xloadcols(void) {
 	int i, r, g, b;
-	XRenderColor color = { .alpha = 0 };
+	XRenderColor color = { .alpha = 0xffff };
 
 	/* load colors [0-15] colors and [256-LEN(colorname)[ (config.h) */
 	for(i = 0; i < LEN(colorname); i++) {
@@ -2270,6 +2270,7 @@ xloadcols(void) {
 				color.red = r == 0 ? 0 : 0x3737 + 0x2828 * r;
 				color.green = g == 0 ? 0 : 0x3737 + 0x2828 * g;
 				color.blue = b == 0 ? 0 : 0x3737 + 0x2828 * b;
+				color.alpha = 0xffff;
 				if(!XftColorAllocValue(xw.dpy, xw.vis, xw.cmap, &color, &dc.col[i])) {
 					die("Could not allocate color %d\n", i);
 				}
@@ -2280,6 +2281,7 @@ xloadcols(void) {
 
 	for(r = 0; r < 24; r++, i++) {
 		color.red = color.green = color.blue = 0x0808 + 0x0a0a * r;
+		color.alpha = 0xffff;
 		if(!XftColorAllocValue(xw.dpy, xw.vis, xw.cmap, &color,
 					&dc.col[i])) {
 			die("Could not allocate color %d\n", i);
