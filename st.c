@@ -346,6 +346,8 @@ static void xsetsel(char*);
 static void xtermclear(int, int, int, int);
 static void xresize(int, int);
 
+static void netwmpid(void);
+
 static XftColor rgb2xft(int, int, int);
 
 static void expose(XEvent *);
@@ -2226,6 +2228,14 @@ xresize(int col, int row) {
 	XftDrawChange(xw.draw, xw.buf);
 }
 
+void
+netwmpid(void) {
+	Atom _NET_WM_PID = XInternAtom(xw.dpy, "_NET_WM_PID", False);
+	pid_t pid = getpid();
+	XChangeProperty(xw.dpy, xw.win, _NET_WM_PID, XA_CARDINAL, 32,
+			PropModeReplace, (unsigned char *)&pid, 1);
+}
+
 XftColor
 rgb2xft(int r, int g, int b) {
 	XftColor xft_color;
@@ -2504,6 +2514,7 @@ xinit(void) {
 	xresettitle();
 	XMapWindow(xw.dpy, xw.win);
 	xhints();
+	netwmpid();
 	XSync(xw.dpy, 0);
 }
 
