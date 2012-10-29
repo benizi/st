@@ -1385,39 +1385,32 @@ tsetattr(int *attr, int l) {
 			term.c.attr.mode &= ~ATTR_REVERSE;
 			break;
 		case 38:
-			if(i + 2 < l && attr[i + 1] == 5) {
-				i += 2;
-				if(BETWEEN(attr[i], 0, 255)) {
-					term.c.attr.fg = dc.col[attr[i]];
+		case 48:
+			{
+				int is_fg = attr[i] == 38;
+				char *fg_bg = is_fg ? "fg" : "bg";
+				if(i + 2 < l && attr[i + 1] == 5) {
+					i += 2;
+					if(BETWEEN(attr[i], 0, 255)) {
+						if(is_fg)
+							term.c.attr.fg = dc.col[attr[i]];
+						else
+							term.c.attr.bg = dc.col[attr[i]];
+					} else {
+						fprintf(stderr,
+								"erresc: bad %scolor %d\n",
+								fg_bg,
+								attr[i]);
+					}
 				} else {
 					fprintf(stderr,
-						"erresc: bad fgcolor %d\n",
-						attr[i]);
+							"erresc: gfx attr %d unknown\n",
+							attr[i]);
 				}
-			} else {
-				fprintf(stderr,
-					"erresc(38): gfx attr %d unknown\n",
-					attr[i]);
 			}
 			break;
 		case 39:
 			term.c.attr.fg = dc.col[defaultfg];
-			break;
-		case 48:
-			if(i + 2 < l && attr[i + 1] == 5) {
-				i += 2;
-				if(BETWEEN(attr[i], 0, 255)) {
-					term.c.attr.bg = dc.col[attr[i]];
-				} else {
-					fprintf(stderr,
-						"erresc: bad bgcolor %d\n",
-						attr[i]);
-				}
-			} else {
-				fprintf(stderr,
-					"erresc(48): gfx attr %d unknown\n",
-					attr[i]);
-			}
 			break;
 		case 49:
 			term.c.attr.bg = dc.col[defaultbg];
