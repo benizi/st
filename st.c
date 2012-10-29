@@ -72,7 +72,7 @@
 #define DEFAULT(a, b)     (a) = (a) ? (a) : (b)
 #define BETWEEN(x, a, b)  ((a) <= (x) && (x) <= (b))
 #define LIMIT(x, a, b)    (x) = (x) < (a) ? (a) : (x) > (b) ? (b) : (x)
-#define ATTRCMP(a, b) ((a).mode != (b).mode || (a).fg != (b).fg || (a).bg != (b).bg)
+#define ATTRCMP(a, b) ((a).mode != (b).mode || (a).fg.pixel != (b).fg.pixel || (a).bg.pixel != (b).bg.pixel)
 #define IS_SET(flag) (term.mode & (flag))
 #define TIMEDIFF(t1, t2) ((t1.tv_sec-t2.tv_sec)*1000 + (t1.tv_usec-t2.tv_usec)/1000)
 
@@ -142,13 +142,12 @@ enum { B0=1, B1=2, B2=4, B3=8, B4=16, B5=32, B6=64, B7=128 };
 typedef unsigned char uchar;
 typedef unsigned int uint;
 typedef unsigned long ulong;
-typedef unsigned short ushort;
 
 typedef struct {
 	char c[UTF_SIZ];     /* character code */
 	uchar mode;  /* attribute flags */
-	ushort fg;   /* foreground  */
-	ushort bg;   /* background  */
+	Colour fg;   /* foreground  */
+	Colour bg;   /* background  */
 	uchar state; /* state flags    */
 } Glyph;
 
@@ -1069,8 +1068,8 @@ treset(void) {
 
 	term.c = (TCursor){{
 		.mode = ATTR_NULL,
-		.fg = defaultfg,
-		.bg = defaultbg
+		.fg = dc.col[defaultfg],
+		.bg = dc.col[defaultbg]
 	}, .x = 0, .y = 0, .state = CURSOR_DEFAULT};
 
 	memset(term.tabs, 0, term.col * sizeof(*term.tabs));
@@ -1351,8 +1350,8 @@ tsetattr(int *attr, int l) {
 		case 0:
 			term.c.attr.mode &= ~(ATTR_REVERSE | ATTR_UNDERLINE | ATTR_BOLD \
 					| ATTR_ITALIC | ATTR_BLINK);
-			term.c.attr.fg = defaultfg;
-			term.c.attr.bg = defaultbg;
+			term.c.attr.fg = dc.col[defaultfg];
+			term.c.attr.bg = dc.col[defaultbg];
 			break;
 		case 1:
 			term.c.attr.mode |= ATTR_BOLD;
@@ -1389,7 +1388,7 @@ tsetattr(int *attr, int l) {
 			if(i + 2 < l && attr[i + 1] == 5) {
 				i += 2;
 				if(BETWEEN(attr[i], 0, 255)) {
-					term.c.attr.fg = attr[i];
+					term.c.attr.fg = dc.col[attr[i]];
 				} else {
 					fprintf(stderr,
 						"erresc: bad fgcolor %d\n",
@@ -1402,13 +1401,13 @@ tsetattr(int *attr, int l) {
 			}
 			break;
 		case 39:
-			term.c.attr.fg = defaultfg;
+			term.c.attr.fg = dc.col[defaultfg];
 			break;
 		case 48:
 			if(i + 2 < l && attr[i + 1] == 5) {
 				i += 2;
 				if(BETWEEN(attr[i], 0, 255)) {
-					term.c.attr.bg = attr[i];
+					term.c.attr.bg = dc.col[attr[i]];
 				} else {
 					fprintf(stderr,
 						"erresc: bad bgcolor %d\n",
@@ -1421,17 +1420,17 @@ tsetattr(int *attr, int l) {
 			}
 			break;
 		case 49:
-			term.c.attr.bg = defaultbg;
+			term.c.attr.bg = dc.col[defaultbg];
 			break;
 		default:
 			if(BETWEEN(attr[i], 30, 37)) {
-				term.c.attr.fg = attr[i] - 30;
+				term.c.attr.fg = dc.col[attr[i] - 30];
 			} else if(BETWEEN(attr[i], 40, 47)) {
-				term.c.attr.bg = attr[i] - 40;
+				term.c.attr.bg = dc.col[attr[i] - 40];
 			} else if(BETWEEN(attr[i], 90, 97)) {
-				term.c.attr.fg = attr[i] - 90 + 8;
+				term.c.attr.fg = dc.col[attr[i] - 90 + 8];
 			} else if(BETWEEN(attr[i], 100, 107)) {
-				term.c.attr.bg = attr[i] - 100 + 8;
+				term.c.attr.bg = dc.col[attr[i] - 100 + 8];
 			} else {
 				fprintf(stderr,
 					"erresc(default): gfx attr %d unknown\n",
@@ -2452,22 +2451,23 @@ xdraws(char *s, Glyph base, int x, int y, int charlen, int bytelen) {
 	    width = charlen * xw.cw;
 	Font *font = &dc.font;
 	XGlyphInfo extents;
-	Colour *fg = &dc.col[base.fg], *bg = &dc.col[base.bg],
+	Colour *fg = &base.fg, *bg = &base.bg,
 		 *temp, revfg, revbg;
 	XRenderColor colfg, colbg;
 
 	if(base.mode & ATTR_BOLD) {
+		/* bold by adding integers doesn't work for 24-bit mode
 		if(BETWEEN(base.fg, 0, 7)) {
-			/* basic system colors */
+			*//* basic system colors *//*
 			fg = &dc.col[base.fg + 8];
 		} else if(BETWEEN(base.fg, 16, 195)) {
-			/* 256 colors */
+			*//* 256 colors *//*
 			fg = &dc.col[base.fg + 36];
 		} else if(BETWEEN(base.fg, 232, 251)) {
-			/* greyscale */
+			*//* greyscale *//*
 			fg = &dc.col[base.fg + 4];
 		}
-		/*
+		*//*
 		 * Those ranges will not be brightened:
 		 *	8 - 15 – bright system colors
 		 *	196 - 231 – highest 256 color cube
@@ -2540,7 +2540,7 @@ void
 xdrawcursor(void) {
 	static int oldx = 0, oldy = 0;
 	int sl;
-	Glyph g = {{' '}, ATTR_NULL, defaultbg, defaultcs, 0};
+	Glyph g = {{' '}, ATTR_NULL, dc.col[defaultbg], dc.col[defaultcs], 0};
 
 	LIMIT(oldx, 0, term.col-1);
 	LIMIT(oldy, 0, term.row-1);
@@ -2560,10 +2560,10 @@ xdrawcursor(void) {
 	/* draw the new one */
 	if(!(IS_SET(MODE_HIDE))) {
 		if(!(xw.state & WIN_FOCUSED))
-			g.bg = defaultucs;
+			g.bg = dc.col[defaultucs];
 
 		if(IS_SET(MODE_REVERSE))
-			g.mode |= ATTR_REVERSE, g.fg = defaultcs, g.bg = defaultfg;
+			g.mode |= ATTR_REVERSE, g.fg = dc.col[defaultcs], g.bg = dc.col[defaultfg];
 
 		sl = utf8size(g.c);
 		xdraws(g.c, g, term.c.x, term.c.y, 1, sl);
