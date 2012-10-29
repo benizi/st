@@ -1395,20 +1395,46 @@ tsetattr(int *attr, int l) {
 		case 48:
 			{
 				int is_fg = attr[i] == 38;
-				char *fg_bg = is_fg ? "fg" : "bg";
-				if(i + 2 < l && attr[i + 1] == 2) {
+				char *type = is_fg ? "fg" : "bg";
+				if(i + 2 < l && (attr[i + 1] == 2 || attr[i + 1] == 6 || attr[i + 1] == 7)) {
+					int is_default = 0;
+					int is_cursor = 0;
+					switch (attr[i + 1]) {
+						case 6:
+							is_default = 1;
+							type = is_fg ? "default fg" : "default bg";
+							break;
+						case 7:
+							is_default = 1;
+							is_cursor = 1;
+							type = is_fg ? "default cursor" : "default unfocused cursor";
+							break;
+					}
 					if(BETWEEN(attr[i+2], 0, 255)
 							&& BETWEEN(attr[i+3], 0, 255)
 							&& BETWEEN(attr[i+4], 0, 255)) {
 						XftColor xftc = rgb2xft(attr[i+2], attr[i+3], attr[i+4]);
-						if(is_fg)
+						if(is_default) {
+							if(is_cursor) {
+								if(is_fg)
+									dc.cs = xftc;
+								else
+									dc.ucs = xftc;
+							} else {
+								if(is_fg)
+									dc.fg = xftc;
+								else
+									dc.bg = xftc;
+							}
+						}
+						else if(is_fg)
 							term.c.attr.fg = xftc;
 						else
 							term.c.attr.bg = xftc;
 						i += 4;
 					}
 					else
-						fprintf(stderr, "erresc: bad 24-bit %scolor (%d, %d, %d)\n", fg_bg, attr[i+2], attr[i+3], attr[i+4]);
+						fprintf(stderr, "erresc: bad 24-bit %scolor (%d, %d, %d)\n", type, attr[i+2], attr[i+3], attr[i+4]);
 				} else if(i + 2 < l && attr[i + 1] == 5) {
 					i += 2;
 					if(BETWEEN(attr[i], 0, 255)) {
@@ -1419,7 +1445,7 @@ tsetattr(int *attr, int l) {
 					} else {
 						fprintf(stderr,
 								"erresc: bad %scolor %d\n",
-								fg_bg,
+								type,
 								attr[i]);
 					}
 				} else {
