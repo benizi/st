@@ -278,6 +278,11 @@ typedef struct {
 /* Drawing Context */
 typedef struct {
 	Colour col[LEN(colorname) < 256 ? 256 : LEN(colorname)];
+	Colour fg;
+	Colour bg;
+	Colour cs;
+	Colour ucs;
+	GC gc;
 	Font font, bfont, ifont, ibfont;
 } DC;
 
@@ -1070,8 +1075,8 @@ treset(void) {
 
 	term.c = (TCursor){{
 		.mode = ATTR_NULL,
-		.fg = dc.col[defaultfg],
-		.bg = dc.col[defaultbg]
+		.fg = dc.fg,
+		.bg = dc.bg
 	}, .x = 0, .y = 0, .state = CURSOR_DEFAULT};
 
 	memset(term.tabs, 0, term.col * sizeof(*term.tabs));
@@ -1352,8 +1357,8 @@ tsetattr(int *attr, int l) {
 		case 0:
 			term.c.attr.mode &= ~(ATTR_REVERSE | ATTR_UNDERLINE | ATTR_BOLD \
 					| ATTR_ITALIC | ATTR_BLINK);
-			term.c.attr.fg = dc.col[defaultfg];
-			term.c.attr.bg = dc.col[defaultbg];
+			term.c.attr.fg = dc.fg;
+			term.c.attr.bg = dc.bg;
 			break;
 		case 1:
 			term.c.attr.mode |= ATTR_BOLD;
@@ -1425,10 +1430,10 @@ tsetattr(int *attr, int l) {
 			}
 			break;
 		case 39:
-			term.c.attr.fg = dc.col[defaultfg];
+			term.c.attr.fg = dc.fg;
 			break;
 		case 49:
-			term.c.attr.bg = dc.col[defaultbg];
+			term.c.attr.bg = dc.bg;
 			break;
 		default:
 			if(BETWEEN(attr[i], 30, 37)) {
@@ -2244,12 +2249,22 @@ xloadcols(void) {
 			die("Could not allocate color %d\n", i);
 		}
 	}
+
+	/* set default colors */
+	if(!colorname[defaultfg] || !XftColorAllocName(xw.dpy, xw.vis, xw.cmap, colorname[defaultfg], &dc.fg))
+		dc.fg = rgb2xft(255, 255, 255); /* default fg = white */
+	if(!colorname[defaultbg] || !XftColorAllocName(xw.dpy, xw.vis, xw.cmap, colorname[defaultbg], &dc.bg))
+		dc.bg = rgb2xft(0, 0, 0); /* default bg = black */
+	if(!colorname[defaultcs] || !XftColorAllocName(xw.dpy, xw.vis, xw.cmap, colorname[defaultcs], &dc.cs))
+		dc.cs = rgb2xft(0xCC, 0xCC, 0xCC); /* default cursor = #cccccc */
+	if(!colorname[defaultucs] || !XftColorAllocName(xw.dpy, xw.vis, xw.cmap, colorname[defaultucs], &dc.ucs))
+		dc.ucs = rgb2xft(0x33, 0x33, 0x33); /* default unfocused cursor = #333333 */
 }
 
 void
 xtermclear(int col1, int row1, int col2, int row2) {
 	XftDrawRect(xw.draw,
-			&dc.col[IS_SET(MODE_REVERSE) ? defaultfg : defaultbg],
+			IS_SET(MODE_REVERSE) ? &dc.fg : &dc.bg,
 			borderpx + col1 * xw.cw,
 			borderpx + row1 * xw.ch,
 			(col2-col1+1) * xw.cw,
@@ -2262,7 +2277,7 @@ xtermclear(int col1, int row1, int col2, int row2) {
 void
 xclear(int x1, int y1, int x2, int y2) {
 	XftDrawRect(xw.draw,
-			&dc.col[IS_SET(MODE_REVERSE) ? defaultfg : defaultbg],
+			IS_SET(MODE_REVERSE) ? &dc.fg : &dc.bg,
 			x1, y1, x2-x1, y2-y1);
 }
 
@@ -2419,8 +2434,8 @@ xinit(void) {
 		xw.fy = 0;
 	}
 
-	attrs.background_pixel = dc.col[defaultbg].pixel;
-	attrs.border_pixel = dc.col[defaultbg].pixel;
+	attrs.background_pixel = dc.bg.pixel;
+	attrs.border_pixel = dc.bg.pixel;
 	attrs.bit_gravity = NorthWestGravity;
 	attrs.event_mask = FocusChangeMask | KeyPressMask
 		| ExposureMask | VisibilityChangeMask | StructureNotifyMask
@@ -2503,8 +2518,8 @@ xdraws(char *s, Glyph base, int x, int y, int charlen, int bytelen) {
 		font = &dc.ibfont;
 
 	if(IS_SET(MODE_REVERSE)) {
-		if(fg == &dc.col[defaultfg]) {
-			fg = &dc.col[defaultbg];
+		if(fg == &dc.fg) {
+			fg = &dc.bg;
 		} else {
 			colfg.red = ~fg->color.red;
 			colfg.green = ~fg->color.green;
@@ -2514,8 +2529,8 @@ xdraws(char *s, Glyph base, int x, int y, int charlen, int bytelen) {
 			fg = &revfg;
 		}
 
-		if(bg == &dc.col[defaultbg]) {
-			bg = &dc.col[defaultfg];
+		if(bg == &dc.bg) {
+			bg = &dc.fg;
 		} else {
 			colbg.red = ~bg->color.red;
 			colbg.green = ~bg->color.green;
@@ -2561,7 +2576,7 @@ void
 xdrawcursor(void) {
 	static int oldx = 0, oldy = 0;
 	int sl;
-	Glyph g = {{' '}, ATTR_NULL, dc.col[defaultbg], dc.col[defaultcs], 0};
+	Glyph g = {{' '}, ATTR_NULL, dc.bg, dc.cs, 0};
 
 	LIMIT(oldx, 0, term.col-1);
 	LIMIT(oldy, 0, term.row-1);
@@ -2581,10 +2596,10 @@ xdrawcursor(void) {
 	/* draw the new one */
 	if(!(IS_SET(MODE_HIDE))) {
 		if(!(xw.state & WIN_FOCUSED))
-			g.bg = dc.col[defaultucs];
+			g.bg = dc.ucs;
 
 		if(IS_SET(MODE_REVERSE))
-			g.mode |= ATTR_REVERSE, g.fg = dc.col[defaultcs], g.bg = dc.col[defaultfg];
+			g.mode |= ATTR_REVERSE, g.fg = dc.cs, g.bg = dc.fg;
 
 		sl = utf8size(g.c);
 		xdraws(g.c, g, term.c.x, term.c.y, 1, sl);
