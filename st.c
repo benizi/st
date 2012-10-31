@@ -86,6 +86,8 @@ enum glyph_attribute {
 	ATTR_GFX       = 8,
 	ATTR_ITALIC    = 16,
 	ATTR_BLINK     = 32,
+	ATTR_FGSET = (1 << 6),
+	ATTR_BGSET = (1 << 7),
 };
 
 enum cursor_movement {
@@ -349,6 +351,9 @@ static void xresize(int, int);
 static void netwmpid(void);
 
 static XftColor rgb2xft(int, int, int);
+
+static void setfg(Glyph *, XftColor);
+static void setbg(Glyph *, XftColor);
 
 static void expose(XEvent *);
 static void visibility(XEvent *);
@@ -1358,9 +1363,7 @@ tsetattr(int *attr, int l) {
 		switch(attr[i]) {
 		case 0:
 			term.c.attr.mode &= ~(ATTR_REVERSE | ATTR_UNDERLINE | ATTR_BOLD \
-					| ATTR_ITALIC | ATTR_BLINK);
-			term.c.attr.fg = dc.fg;
-			term.c.attr.bg = dc.bg;
+					| ATTR_ITALIC | ATTR_BLINK | ATTR_FGSET | ATTR_BGSET);
 			break;
 		case 1:
 			term.c.attr.mode |= ATTR_BOLD;
@@ -1430,9 +1433,9 @@ tsetattr(int *attr, int l) {
 							}
 						}
 						else if(is_fg)
-							term.c.attr.fg = xftc;
+							setfg(&term.c.attr, xftc);
 						else
-							term.c.attr.bg = xftc;
+							setbg(&term.c.attr, xftc);
 						i += 4;
 					}
 					else
@@ -1441,9 +1444,9 @@ tsetattr(int *attr, int l) {
 					i += 2;
 					if(BETWEEN(attr[i], 0, 255)) {
 						if(is_fg)
-							term.c.attr.fg = dc.col[attr[i]];
+							setfg(&term.c.attr, dc.col[attr[i]]);
 						else
-							term.c.attr.bg = dc.col[attr[i]];
+							setbg(&term.c.attr, dc.col[attr[i]]);
 					} else {
 						fprintf(stderr,
 								"erresc: bad %scolor %d\n",
@@ -1458,20 +1461,20 @@ tsetattr(int *attr, int l) {
 			}
 			break;
 		case 39:
-			term.c.attr.fg = dc.fg;
+			term.c.attr.mode &= ~ATTR_FGSET;
 			break;
 		case 49:
-			term.c.attr.bg = dc.bg;
+			term.c.attr.mode &= ~ATTR_BGSET;
 			break;
 		default:
 			if(BETWEEN(attr[i], 30, 37)) {
-				term.c.attr.fg = dc.col[attr[i] - 30];
+				setfg(&term.c.attr, dc.col[attr[i] - 30]);
 			} else if(BETWEEN(attr[i], 40, 47)) {
-				term.c.attr.bg = dc.col[attr[i] - 40];
+				setbg(&term.c.attr, dc.col[attr[i] - 40]);
 			} else if(BETWEEN(attr[i], 90, 97)) {
-				term.c.attr.fg = dc.col[attr[i] - 90 + 8];
+				setfg(&term.c.attr, dc.col[attr[i] - 90 + 8]);
 			} else if(BETWEEN(attr[i], 100, 107)) {
-				term.c.attr.bg = dc.col[attr[i] - 100 + 8];
+				setbg(&term.c.attr, dc.col[attr[i] - 100 + 8]);
 			} else {
 				fprintf(stderr,
 					"erresc(default): gfx attr %d unknown\n",
@@ -2250,6 +2253,18 @@ rgb2xft(int r, int g, int b) {
 }
 
 void
+setfg(Glyph *glyph, XftColor color) {
+	glyph->fg = color;
+	glyph->mode |= ATTR_FGSET;
+}
+
+void
+setbg(Glyph *glyph, XftColor color) {
+	glyph->bg = color;
+	glyph->mode |= ATTR_BGSET;
+}
+
+void
 xloadcols(void) {
 	int i, r, g, b;
 	XRenderColor color = { .alpha = 0xffff };
@@ -2526,9 +2541,11 @@ xdraws(char *s, Glyph base, int x, int y, int charlen, int bytelen) {
 	    width = charlen * xw.cw;
 	Font *font = &dc.font;
 	XGlyphInfo extents;
-	Colour *fg = &base.fg, *bg = &base.bg,
-		 *temp, revfg, revbg;
+	Colour *fg, *bg, *temp, revfg, revbg;
 	XRenderColor colfg, colbg;
+
+	fg = (base.mode & ATTR_FGSET) ? &base.fg : &dc.fg;
+	bg = (base.mode & ATTR_BGSET) ? &base.bg : &dc.bg;
 
 	if(base.mode & ATTR_BOLD) {
 		/* bold by adding integers doesn't work for 24-bit mode
@@ -2557,7 +2574,7 @@ xdraws(char *s, Glyph base, int x, int y, int charlen, int bytelen) {
 		font = &dc.ibfont;
 
 	if(IS_SET(MODE_REVERSE)) {
-		if(fg == &dc.fg) {
+		if(!(base.mode & ATTR_FGSET)) {
 			fg = &dc.bg;
 		} else {
 			colfg.red = ~fg->color.red;
@@ -2568,7 +2585,7 @@ xdraws(char *s, Glyph base, int x, int y, int charlen, int bytelen) {
 			fg = &revfg;
 		}
 
-		if(bg == &dc.bg) {
+		if(!(base.mode & ATTR_BGSET)) {
 			bg = &dc.fg;
 		} else {
 			colbg.red = ~bg->color.red;
@@ -2615,7 +2632,7 @@ void
 xdrawcursor(void) {
 	static int oldx = 0, oldy = 0;
 	int sl;
-	Glyph g = {{' '}, ATTR_NULL, dc.bg, dc.cs, 0};
+	Glyph g = {{' '}, ATTR_FGSET|ATTR_BGSET, dc.bg, dc.cs, 0};
 
 	LIMIT(oldx, 0, term.col-1);
 	LIMIT(oldy, 0, term.row-1);
