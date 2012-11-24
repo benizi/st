@@ -350,10 +350,10 @@ static void xresize(int, int);
 
 static void netwmpid(void);
 
-static XftColor rgb2xft(int, int, int);
+static Colour rgb2xft(int, int, int);
 
-static void setfg(Glyph *, XftColor);
-static void setbg(Glyph *, XftColor);
+static void setfg(Glyph *, Colour);
+static void setbg(Glyph *, Colour);
 
 static void expose(XEvent *);
 static void visibility(XEvent *);
@@ -1418,7 +1418,7 @@ tsetattr(int *attr, int l) {
 					if(BETWEEN(attr[i+2], 0, 255)
 							&& BETWEEN(attr[i+3], 0, 255)
 							&& BETWEEN(attr[i+4], 0, 255)) {
-						XftColor xftc = rgb2xft(attr[i+2], attr[i+3], attr[i+4]);
+						Colour xftc = rgb2xft(attr[i+2], attr[i+3], attr[i+4]);
 						if(is_default) {
 							if(is_cursor) {
 								if(is_fg)
@@ -2239,9 +2239,9 @@ netwmpid(void) {
 			PropModeReplace, (unsigned char *)&pid, 1);
 }
 
-XftColor
+Colour
 rgb2xft(int r, int g, int b) {
-	XftColor xft_color;
+	Colour xft_color;
 	XRenderColor xrc_color = { .alpha = 0xffff };
 	xrc_color.red = r + (r << 8);
 	xrc_color.green = g + (g << 8);
@@ -2253,13 +2253,13 @@ rgb2xft(int r, int g, int b) {
 }
 
 void
-setfg(Glyph *glyph, XftColor color) {
+setfg(Glyph *glyph, Colour color) {
 	glyph->fg = color;
 	glyph->mode |= ATTR_FGSET;
 }
 
 void
-setbg(Glyph *glyph, XftColor color) {
+setbg(Glyph *glyph, Colour color) {
 	glyph->bg = color;
 	glyph->mode |= ATTR_BGSET;
 }
